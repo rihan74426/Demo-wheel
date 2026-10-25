@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#15080b" />
+  <title>Showtime — 3D Prize Wheel Demo</title>
+  <style>
+    :root { color-scheme: dark; --gold:#f4c76b; --cream:#fff3d6; --muted:#ba9d83; }
+    * { box-sizing: border-box; }
+    html, body { width:100%; height:100%; margin:0; overflow:hidden; background:#10070b; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { min-height:100svh; }
+    #scene { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; }
+    .grain { position:fixed; inset:0; pointer-events:none; opacity:.08; z-index:2; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.92' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.52'/%3E%3C/svg%3E"); mix-blend-mode:soft-light; }
+    .topbar { position:fixed; z-index:4; top:clamp(18px,3.5vh,38px); left:clamp(18px,4vw,58px); right:clamp(18px,4vw,58px); display:flex; justify-content:space-between; align-items:flex-start; gap:20px; pointer-events:none; }
+    .brand { display:flex; flex-direction:column; gap:5px; }
+    .eyebrow { color:#f4c76b; font-size:10px; font-weight:800; letter-spacing:.34em; text-transform:uppercase; }
+    h1 { font-family: Georgia, "Times New Roman", serif; font-size:clamp(25px,4vw,48px); font-weight:700; letter-spacing:.02em; line-height:.95; margin:0; color:#fff5e1; text-shadow:0 2px 25px #e35f3b36; }
+    .subtitle { margin-top:7px; font-size:11px; letter-spacing:.17em; color:#d6b8a8; text-transform:uppercase; }
+    .live { display:flex; align-items:center; gap:8px; padding:9px 13px; border:1px solid #f6c7774c; background:#1a0c0cc9; border-radius:999px; color:#fbe5b9; text-transform:uppercase; font-size:9px; font-weight:800; letter-spacing:.2em; backdrop-filter:blur(12px); }
+    .live-dot { width:7px; height:7px; border-radius:50%; background:#ff5c47; box-shadow:0 0 12px #ff593e; animation:pulse 1.4s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity:.45; box-shadow:0 0 3px #ff593e; } }
+    .bottom-ui { position:fixed; z-index:4; left:50%; bottom:clamp(15px,3vh,32px); transform:translateX(-50%); width:min(640px,calc(100% - 32px)); display:flex; justify-content:center; align-items:center; gap:10px; flex-wrap:wrap; }
+    button { cursor:pointer; appearance:none; border:1px solid #f8d78c60; color:#fff0cf; background:linear-gradient(180deg,#633522ed,#351a19ed); box-shadow:0 8px 25px #0008,inset 0 1px #ffffff22; border-radius:999px; padding:12px 22px; font:800 10px/1 Inter,system-ui,sans-serif; letter-spacing:.2em; text-transform:uppercase; transition:transform .18s ease,border-color .18s ease,filter .18s ease; backdrop-filter:blur(12px); }
+    button:hover { transform:translateY(-2px); filter:brightness(1.18); border-color:#f8d78caa; }
+    button:active { transform:translateY(1px) scale(.99); }
+    button.primary { background:linear-gradient(180deg,#f0c975,#ad6c32); color:#26100d; border-color:#fff0b5; }
+    button.quiet { background:#1d1010ce; }
+    .hint { flex-basis:100%; text-align:center; color:#e9d2bd; font-size:9px; letter-spacing:.18em; text-transform:uppercase; text-shadow:0 2px 8px #000; opacity:.84; }
+    .readout { position:fixed; z-index:4; right:clamp(18px,4vw,58px); bottom:clamp(22px,4vh,42px); text-align:right; pointer-events:none; }
+    .readout-label { color:#d3ac87; font-size:9px; letter-spacing:.23em; text-transform:uppercase; }
+    .readout-value { font-family:Georgia,serif; font-size:clamp(21px,3vw,32px); color:#fff2d2; margin-top:4px; text-shadow:0 0 25px #ffc26422; }
+    .footer { position:fixed; z-index:4; bottom:clamp(20px,4vh,42px); left:clamp(18px,4vw,58px); color:#b18e7e; font-size:9px; letter-spacing:.12em; text-transform:uppercase; pointer-events:none; }
+    .vignette { position:fixed; z-index:1; inset:0; pointer-events:none; background:radial-gradient(ellipse at 50% 45%, transparent 28%, #10060966 74%, #090307b8 100%); }
+    @media (max-width:650px) { .subtitle{max-width:220px;line-height:1.6}.live{padding:7px 9px;font-size:8px}.bottom-ui{bottom:18px;gap:7px}.bottom-ui button{padding:11px 14px;font-size:9px}.readout,.footer{display:none} }
+    @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; } }
+  </style>
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/" } }
+  </script>
+</head>
+<body>
+  <canvas id="scene" aria-label="Interactive three-dimensional game show prize wheel. Drag the wheel or use the spin buttons."></canvas>
+  <div class="grain"></div><div class="vignette"></div>
+  <header class="topbar">
+    <div class="brand"><div class="eyebrow">The Grand Showcase</div><h1>SHOWTIME<span style="color:#e6b763">.</span></h1><div class="subtitle">A little luck. A lot of spectacle.</div></div>
+    <div class="live"><span class="live-dot"></span> Studio lights live</div>
+  </header>
+  <div class="footer">Drag to spin · Built with Three.js</div>
+  <div class="readout"><div class="readout-label">Wheel velocity</div><div class="readout-value" id="velocity">0.00 <span style="font-size:12px;color:#b88d69">rad/s</span></div></div>
+  <div class="bottom-ui">
+    <button class="quiet" id="lightsBtn" type="button">Lights: Chase</button>
+    <button class="primary" id="spinBtn" type="button">Spin the wheel ↗</button>
+    <button class="quiet" id="soundBtn" type="button">Sound: On</button>
+    <div class="hint">Drag anywhere on the wheel · release to let it roll</div>
+  </div>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+
+const canvas = document.querySelector('#scene');
+const isMobile = matchMedia('(max-width: 650px)').matches;
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#17080c');
+scene.fog = new THREE.Fog('#17080c', 12, 25);
+const camera = new THREE.PerspectiveCamera(34, innerWidth / innerHeight, 0.1, 60);
+camera.position.set(3.6, 1.25, 12.7);
+camera.lookAt(0, 0.35, 0);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !isMobile, alpha: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, isMobile ? 1.35 : 1.8));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+renderer.shadowMap.enabled = !isMobile;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), isMobile ? 0.48 : 0.72, 0.45, 0.78);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+function createStudioEnvironment() {
+  const environmentCanvas = document.createElement('canvas');
+  environmentCanvas.width = 1024;
+  environmentCanvas.height = 512;
+  const context = environmentCanvas.getContext('2d');
+  const backdrop = context.createLinearGradient(0, 0, 0, 512);
+  backdrop.addColorStop(0, '#09090d');
+  backdrop.addColorStop(.48, '#51403a');
+  backdrop.addColorStop(1, '#140a0d');
+  context.fillStyle = backdrop;
+  context.fillRect(0, 0, 1024, 512);
+
+  for (const [x, width, alpha] of [[115, 52, .68], [355, 26, .42], [670, 70, .76], [910, 34, .5]]) {
+    const softbox = context.createLinearGradient(x - width, 0, x + width, 0);
+    softbox.addColorStop(0, 'rgba(255,255,255,0)');
+    softbox.addColorStop(.5, `rgba(255,239,211,${alpha})`);
+    softbox.addColorStop(1, 'rgba(255,255,255,0)');
+    context.fillStyle = softbox;
+    context.fillRect(x - width, 48, width * 2, 390);
+  }
+
+  const environment = new THREE.CanvasTexture(environmentCanvas);
+  environment.mapping = THREE.EquirectangularReflectionMapping;
+  environment.colorSpace = THREE.SRGBColorSpace;
+  return environment;
+}
+
+scene.environment = createStudioEnvironment();
+scene.environmentIntensity = .62;
+
+const mat = (color, metalness=0, roughness=.5, extra={}) => new THREE.MeshStandardMaterial({color, metalness, roughness, ...extra});
+const gold = mat('#d9a640', .86, .24);
+const paleGold = mat('#ffe4a0', .78, .19);
+const darkGold = mat('#6e4118', .82, .3);
+const silver = mat('#bdc3c7', .92, .2);
+const darkSilver = mat('#53585f', .88, .29);
+const black = mat('#09090d', .7, .19);
+const red = mat('#710d21', .2, .3);
+const cream = mat('#fff1d5', .05, .25);
+const emissiveWarm = new THREE.MeshStandardMaterial({color:'#fff0c1', emissive:'#ffb747', emissiveIntensity:3.2, roughness:.22, metalness:.05});
+const emissiveRed = new THREE.MeshStandardMaterial({color:'#ffab91', emissive:'#ff3d30', emissiveIntensity:2.2, roughness:.25});
+
+scene.add(new THREE.HemisphereLight('#ffddba', '#210912', 1.3));
+const key = new THREE.SpotLight('#fff0d5', 150, 24, Math.PI/5, .4, 1.4); key.position.set(-3.5, 7, 7); key.target.position.set(0, .4, 0); key.castShadow = !isMobile; key.shadow.mapSize.set(1024,1024); scene.add(key,key.target);
+const fill = new THREE.PointLight('#f34a50', 48, 13, 2); fill.position.set(4,2.5,3.2); scene.add(fill);
+const rim = new THREE.PointLight('#ffb846', 55, 12, 2); rim.position.set(-4,3,-1); scene.add(rim);
+const front = new THREE.PointLight('#fff2db', 24, 10, 2); front.position.set(0,0,7); scene.add(front);
+
+// A softly graded, procedural red studio wall keeps the demo self-contained.
+function radialBackdrop() {
+  const c = document.createElement('canvas'); c.width=512; c.height=512;
+  const ctx=c.getContext('2d'); const g=ctx.createRadialGradient(256,210,15,256,245,360);
+  g.addColorStop(0,'#8e1b2e'); g.addColorStop(.36,'#52101f'); g.addColorStop(1,'#13070d');
+  ctx.fillStyle=g; ctx.fillRect(0,0,512,512);
+  const tex=new THREE.CanvasTexture(c); tex.colorSpace=THREE.SRGBColorSpace; return tex;
+}
+const wall = new THREE.Mesh(new THREE.PlaneGeometry(22,13), new THREE.MeshBasicMaterial({map:radialBackdrop()}));
+wall.position.set(0,2,-3.7); scene.add(wall);
+// Stage floor with a subtle red reflection wash.
+const floorMat = mat('#3b1a10', .35, .3, { emissive:'#210b05', emissiveIntensity:.32 });
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(22,12),floorMat); floor.rotation.x=-Math.PI/2; floor.position.set(0,-2.4,-1); floor.receiveShadow=!isMobile; scene.add(floor);
+const floorLine = new THREE.Mesh(new THREE.BoxGeometry(16,.025,.025), paleGold); floorLine.position.set(0,-2.36,2); scene.add(floorLine);
+
+// Stage columns: a gold-trimmed red tower with instanced warm bulbs.
+const bulbMeshes=[]; const bulbCount=15; const bulbGeo=new THREE.SphereGeometry(.075,12,10);
+const bulbMaterial = new THREE.MeshStandardMaterial({color:'#fff1c6',emissive:'#ffb648',emissiveIntensity:2.8,roughness:.2});
+const bulbGlowMaterial = new THREE.MeshBasicMaterial({color:'#ffcc72',transparent:true,opacity:.11,depthWrite:false});
+const columns=[];
+for (const x of [-4.1]) {
+  const column = new THREE.Group(); column.position.set(x,-.02,.25); scene.add(column); columns.push(column);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(.48,4.5,.44), mat('#3b0815',.5,.26)); body.castShadow=!isMobile; column.add(body);
+  for (const z of [-.24,.24]) { const trim=new THREE.Mesh(new THREE.BoxGeometry(.055,4.57,.04),paleGold); trim.position.set(x<0?.22:-.22,0,z); column.add(trim); }
+  for (const y of [-2.17,2.17]) { const cap = new THREE.Mesh(new THREE.BoxGeometry(.62,.13,.55),gold); cap.position.y=y; column.add(cap); }
+  const bulbInstances = new THREE.InstancedMesh(bulbGeo,bulbMaterial,bulbCount);
+  const haloInstances = new THREE.InstancedMesh(new THREE.SphereGeometry(.15,10,8),bulbGlowMaterial,bulbCount);
+  const dummy=new THREE.Object3D();
+  for(let i=0;i<bulbCount;i++) {
+    const y=-1.92+i*(3.84/(bulbCount-1)); dummy.position.set(0,y,.26); dummy.updateMatrix(); bulbInstances.setMatrixAt(i,dummy.matrix);
+    dummy.scale.set(1,1,1); dummy.position.set(0,y,.25); dummy.updateMatrix(); haloInstances.setMatrixAt(i,dummy.matrix);
+  }
+  column.add(bulbInstances,haloInstances);
+  bulbMeshes.push({bulbInstances,haloInstances,count:bulbCount,baseY:-1.92,step:3.84/(bulbCount-1)});
+}
+
+// Black lacquer stage plinth.
+const plinth = new THREE.Group(); plinth.position.set(0,-2.02,.45); scene.add(plinth);
+function addBox(parent,size,position,material,bevel=false) {
+  const geometry = new THREE.BoxGeometry(...size); const mesh=new THREE.Mesh(geometry,material); mesh.position.set(...position); mesh.castShadow=!isMobile; mesh.receiveShadow=!isMobile; parent.add(mesh); return mesh;
+}
+addBox(plinth,[5.6,.25,1.1],[0,0,0],black);
+addBox(plinth,[5.35,.07,1.13],[0,.16,0],gold);
+addBox(plinth,[5.15,.16,1.08],[0,.275,0],mat('#19161a',.8,.14));
+addBox(plinth,[4.95,.04,1.10],[0,.37,0],paleGold);
+// A gentle front-face inset and gold hairline are intentionally restrained.
+addBox(plinth,[4.1,.075,.018],[0,.01,.56],mat('#282024',.72,.16));
+addBox(plinth,[3.65,.012,.02],[0,.01,.575],darkGold);
+
+// The wheel is a horizontal-axle drum with numbered panels wrapping around its outside.
+const wheelRoot = new THREE.Group(); wheelRoot.position.set(0,.45,.15); scene.add(wheelRoot);
+const wheel = new THREE.Group(); wheelRoot.add(wheel);
+const R=2.25, DRUM_WIDTH=3.45, SEGMENTS=20, segmentAngle=Math.PI*2/SEGMENTS;
+const values=['100','15','20','30','35','40','45','50','55','60','65','70','75','80','85','95','10','25','90','5'];
+const panelColors=values.map((_,i)=>i===0?'#d52e2c':(i===1||i===19?'#8acb62':(i===17||i===18?'#171615':(i%2?'#161515':'#75bd58'))));
+const fallbackLabels=[];
+const roughnessCanvas=document.createElement('canvas');roughnessCanvas.width=roughnessCanvas.height=128;
+const roughnessContext=roughnessCanvas.getContext('2d');const roughnessData=roughnessContext.createImageData(128,128);
+let textureSeed=1247;
+for(let i=0;i<roughnessData.data.length;i+=4){
+  textureSeed=(textureSeed*16807)%2147483647;
+  const value=textureSeed%97===0?100:218+(textureSeed%38);
+  roughnessData.data[i]=value;roughnessData.data[i+1]=value;roughnessData.data[i+2]=value;roughnessData.data[i+3]=255;
+}
+roughnessContext.putImageData(roughnessData,0,0);
+const plaqueRoughness=new THREE.CanvasTexture(roughnessCanvas);
+plaqueRoughness.wrapS=plaqueRoughness.wrapT=THREE.RepeatWrapping;
+plaqueRoughness.repeat.set(2,2);
+const glitterGold=mat('#d3a139',.72,.42,{roughnessMap:plaqueRoughness});
+const drumBody=new THREE.Mesh(new THREE.CylinderGeometry(R,R,DRUM_WIDTH,96,1,false),darkSilver);
+drumBody.rotation.z=-Math.PI/2;drumBody.castShadow=!isMobile;drumBody.receiveShadow=!isMobile;wheel.add(drumBody);
+
+function makeDrumPanel(start,end,radius) {
+  const angularSteps=6,positions=[],indices=[];
+  for(let row=0;row<=angularSteps;row++) {
+    const angle=start+(end-start)*row/angularSteps;
+    for(let side=0;side<=1;side++) {
+      const x=-DRUM_WIDTH/2+DRUM_WIDTH*side;
+      positions.push(x,radius*Math.sin(angle),radius*Math.cos(angle));
+    }
+  }
+  for(let row=0;row<angularSteps;row++) {
+    const first=row*2,next=first+2;
+    indices.push(first,first+1,next,first+1,next+1,next);
+  }
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  geometry.setIndex(indices);geometry.computeVertexNormals();
+  return geometry;
+}
+
+for(let i=0;i<SEGMENTS;i++) {
+  const middle=i*segmentAngle;
+  const gap=.014;
+  const panel=new THREE.Mesh(makeDrumPanel(middle-segmentAngle/2+gap,middle+segmentAngle/2-gap,R+.025),mat(panelColors[i],.12,.46,{side:THREE.DoubleSide}));
+  panel.castShadow=!isMobile;panel.receiveShadow=!isMobile;wheel.add(panel);
+
+  const labelCanvas=document.createElement('canvas');labelCanvas.width=1024;labelCanvas.height=320;
+  const labelContext=labelCanvas.getContext('2d');labelContext.textAlign='center';labelContext.textBaseline='middle';
+  labelContext.font='900 205px Impact, "Arial Black", sans-serif';labelContext.lineJoin='round';
+  labelContext.strokeStyle='#12100c';labelContext.lineWidth=46;labelContext.strokeText(values[i],512,158);
+  labelContext.strokeStyle='#d2a13a';labelContext.lineWidth=30;labelContext.strokeText(values[i],512,158);
+  labelContext.fillStyle=i===0?'#dc3932':(i===1||i===19?'#08705a':(i===17||i===18?'#fff0d2':'#fff0d2'));
+  labelContext.shadowColor='#050404';labelContext.shadowBlur=14;labelContext.fillText(values[i],512,158);
+  const labelTexture=new THREE.CanvasTexture(labelCanvas);labelTexture.colorSpace=THREE.SRGBColorSpace;
+  const label=new THREE.Mesh(new THREE.PlaneGeometry(2.55,.8),new THREE.MeshBasicMaterial({map:labelTexture,transparent:true,depthWrite:false,side:THREE.DoubleSide}));
+  label.position.set(0,(R+.075)*Math.sin(middle),(R+.075)*Math.cos(middle));
+  label.rotation.x=-middle;wheel.add(label);fallbackLabels.push(label);
+}
+
+// Bright metal hoops form the broad silver seams between the colored panels.
+for(let i=0;i<SEGMENTS;i++) {
+  const middle=i*segmentAngle;
+  const divider=new THREE.Mesh(makeDrumPanel(middle-.024,middle+.024,R+.045),silver);
+  divider.castShadow=!isMobile;divider.receiveShadow=!isMobile;wheel.add(divider);
+}
+for(const x of [-DRUM_WIDTH/2,DRUM_WIDTH/2]) {
+  const rimHoop=new THREE.Mesh(new THREE.TorusGeometry(R+.02,.075,14,96),gold);
+  rimHoop.rotation.y=Math.PI/2;rimHoop.position.x=x;wheel.add(rimHoop);
+}
+
+// The right end cap and its small red pegs remain visible at the reference angle.
+const endCap=new THREE.Mesh(new THREE.CylinderGeometry(R,R,.12,96),darkSilver);
+endCap.rotation.z=-Math.PI/2;endCap.position.x=DRUM_WIDTH/2+.035;wheel.add(endCap);
+const endCapRing=new THREE.Mesh(new THREE.TorusGeometry(R-.12,.055,12,96),paleGold);
+endCapRing.rotation.y=Math.PI/2;endCapRing.position.x=DRUM_WIDTH/2+.105;wheel.add(endCapRing);
+const pegMaterial=mat('#d9473d',.22,.26,{emissive:'#4a0908',emissiveIntensity:.2});
+const pegGeometry=new THREE.BoxGeometry(.095,.095,.095);
+for(let i=0;i<SEGMENTS;i++) {
+  const angle=i*segmentAngle;
+  const peg=new THREE.Mesh(pegGeometry,pegMaterial);
+  peg.position.set(DRUM_WIDTH/2+.105,(R+.035)*Math.sin(angle),(R+.035)*Math.cos(angle));
+  wheel.add(peg);
+}
+
+new FontLoader().load(
+  'https://cdn.jsdelivr.net/npm/three@0.180.0/examples/fonts/helvetiker_bold.typeface.json',
+  font => values.forEach((value,i) => {
+    const middle=i*segmentAngle;
+    const size=value.length===3?.68:.78;
+    const goldGeometry=new TextGeometry(value,{font,size,depth:.09,curveSegments:2,bevelEnabled:true,bevelThickness:.025,bevelSize:.018,bevelSegments:2});
+    goldGeometry.computeBoundingBox();
+    goldGeometry.translate(-(goldGeometry.boundingBox.max.x+goldGeometry.boundingBox.min.x)/2,-(goldGeometry.boundingBox.max.y+goldGeometry.boundingBox.min.y)/2,0);
+    const goldLettering=new THREE.Mesh(goldGeometry,glitterGold);
+    goldLettering.position.set(0,(R+.055)*Math.sin(middle),(R+.055)*Math.cos(middle));
+    goldLettering.rotation.x=-middle;goldLettering.castShadow=!isMobile;wheel.add(goldLettering);
+
+    const faceGeometry=new TextGeometry(value,{font,size:size*.77,depth:.035,curveSegments:2,bevelEnabled:true,bevelThickness:.01,bevelSize:.008,bevelSegments:1});
+    faceGeometry.computeBoundingBox();
+    faceGeometry.translate(-(faceGeometry.boundingBox.max.x+faceGeometry.boundingBox.min.x)/2,-(faceGeometry.boundingBox.max.y+faceGeometry.boundingBox.min.y)/2,0);
+    const faceColor=i===0?'#dc3932':(i===1||i===19?'#08705a':'#fff0d2');
+    const face=new THREE.Mesh(faceGeometry,mat(faceColor,.12,.4));
+    face.position.set(0,(R+.17)*Math.sin(middle),(R+.17)*Math.cos(middle));
+    face.rotation.x=-middle;face.castShadow=!isMobile;wheel.add(face);fallbackLabels[i].visible=false;
+  }), undefined, () => console.info('3D typeface unavailable; using canvas lettering fallback.')
+);
+
+// A fixed red flapper points into the drum from its right edge.
+const flapper=new THREE.Group();
+flapper.position.set(DRUM_WIDTH/2+.58,wheelRoot.position.y,wheelRoot.position.z+R+.12);scene.add(flapper);
+const arm=new THREE.Group();flapper.add(arm);
+const pointerShape=new THREE.Shape();pointerShape.moveTo(-.58,0);pointerShape.lineTo(.12,.28);pointerShape.lineTo(.12,-.28);pointerShape.closePath();
+const armMesh=new THREE.Mesh(new THREE.ExtrudeGeometry(pointerShape,{depth:.09,bevelEnabled:true,bevelSegments:2,bevelSize:.025,bevelThickness:.025}),mat('#e63836',.18,.28,{emissive:'#3b0708',emissiveIntensity:.16}));arm.add(armMesh);
+const pivot=new THREE.Mesh(new THREE.SphereGeometry(.13,20,14),paleGold);pivot.position.x=.12;flapper.add(pivot);
+const armLine=new THREE.Mesh(new THREE.BoxGeometry(.48,.025,.12),paleGold);armLine.position.set(-.24,0,.09);arm.add(armLine);
+const tip=new THREE.Mesh(new THREE.SphereGeometry(.075,16,10),paleGold);tip.position.set(-.56,0,.08);arm.add(tip);
+const pin=new THREE.Mesh(new THREE.CylinderGeometry(.16,.16,.1,24),gold);pin.rotation.x=Math.PI/2;pin.position.set(.12,0,.06);flapper.add(pin);
+const armHome=0;arm.rotation.z=armHome;
+
+// Drag interaction maps pointer travel around the wheel to angular velocity.
+let angularVelocity=0, isDragging=false, lastAngle=0,lastTime=0, lastPointerAngle=0, spinClock=0;
+let lightMode=1, soundOn=true, audioCtx=null, lastPegBucket=-1, clickFlash=0;
+const raycaster=new THREE.Raycaster();const pointer=new THREE.Vector2();
+function wheelPointerAngle(e){
+  const dx=e.clientX-innerWidth/2;const dy=innerHeight*.48-e.clientY;
+  return Math.atan2(dy,dx);
+}
+canvas.addEventListener('pointerdown',e=>{
+  const a=wheelPointerAngle(e); const dx=e.clientX-innerWidth/2,dy=e.clientY-innerHeight*.47;
+  // Only capture wheel-area gestures; dragging off-stage still works after capture.
+  if(Math.hypot(dx,dy)>Math.min(innerWidth*.46,420) || Math.abs(dy)>Math.min(innerHeight*.42,390)) return;
+  isDragging=true;lastAngle=a;lastTime=performance.now();angularVelocity*=.25;canvas.setPointerCapture(e.pointerId);canvas.style.cursor='grabbing';
+  wakeAudio();
+});
+canvas.addEventListener('pointermove',e=>{
+  if(!isDragging){canvas.style.cursor='grab';return;}
+  const now=performance.now(),a=wheelPointerAngle(e); let da=a-lastAngle;
+  if(da>Math.PI)da-=Math.PI*2;if(da< -Math.PI)da+=Math.PI*2;
+  const dt=Math.max(.008,(now-lastTime)/1000);wheel.rotation.x+=da;angularVelocity=THREE.MathUtils.clamp(da/dt,-12,12);lastAngle=a;lastTime=now;
+});
+function endDrag(){isDragging=false;canvas.style.cursor='grab';}
+canvas.addEventListener('pointerup',endDrag);canvas.addEventListener('pointercancel',endDrag);canvas.addEventListener('lostpointercapture',endDrag);
+
+function wakeAudio(){ if(!soundOn)return; if(!audioCtx){const C=window.AudioContext||window.webkitAudioContext;if(C)audioCtx=new C();} if(audioCtx?.state==='suspended')audioCtx.resume(); }
+function clack(intensity=1){
+  if(!soundOn||!audioCtx)return;
+  const t=audioCtx.currentTime; const osc=audioCtx.createOscillator(), gain=audioCtx.createGain();
+  osc.type='triangle';osc.frequency.setValueAtTime(1100+Math.random()*450,t);osc.frequency.exponentialRampToValueAtTime(260,t+.026);
+  gain.gain.setValueAtTime(.0001,t);gain.gain.exponentialRampToValueAtTime(.065*Math.min(1.5,intensity),t+.002);gain.gain.exponentialRampToValueAtTime(.0001,t+.045);
+  osc.connect(gain);gain.connect(audioCtx.destination);osc.start(t);osc.stop(t+.05);
+}
+function spin(power=1){wakeAudio();angularVelocity+=(Math.random()>.5?1:-1)*(5.2+Math.random()*2.2)*power;angularVelocity=THREE.MathUtils.clamp(angularVelocity,-10,10);}
+document.querySelector('#spinBtn').addEventListener('click',()=>spin(1));
+document.querySelector('#lightsBtn').addEventListener('click',e=>{lightMode=(lightMode+1)%3;e.currentTarget.textContent=['Lights: Steady','Lights: Chase','Lights: Pulse'][lightMode];});
+document.querySelector('#soundBtn').addEventListener('click',e=>{soundOn=!soundOn;e.currentTarget.textContent=`Sound: ${soundOn?'On':'Off'}`;if(soundOn)wakeAudio();});
+
+const clock=new THREE.Clock();let elapsed=0;
+function animate(){
+  requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);elapsed+=dt;
+  if(!isDragging){wheel.rotation.x+=angularVelocity*dt;angularVelocity*=Math.exp(-.34*dt);if(Math.abs(angularVelocity)<.008)angularVelocity=0;}
+  // The spring-loaded pointer flexes as each drum peg passes beneath it.
+  const desired=THREE.MathUtils.clamp(-angularVelocity*.018,-.28,.28)+armHome;
+  const spring=65,damping=10; flapper.userData.v=(flapper.userData.v||0)+(desired-arm.rotation.z)*spring*dt-(flapper.userData.v||0)*damping*dt;
+  arm.rotation.z+=(flapper.userData.v||0)*dt;
+  const bucket=Math.floor(wheel.rotation.x/segmentAngle);
+  if(bucket!==lastPegBucket && Math.abs(angularVelocity)>.16){clack(Math.min(1.4,Math.abs(angularVelocity)/4));clickFlash=.07;lastPegBucket=bucket;}
+  clickFlash=Math.max(0,clickFlash-dt);tip.scale.setScalar(1+clickFlash*1.7);
+  if(!reducedMotion){
+    bulbMeshes.forEach((set,columnIndex)=>{
+      const dummy=new THREE.Object3D();
+      for(let i=0;i<set.count;i++){
+        const wave=lightMode===0?0:(lightMode===1?Math.sin(elapsed*5.2-i*.82+columnIndex*.4):Math.sin(elapsed*2.5+columnIndex));
+        const glow=lightMode===0?1:(lightMode===1?THREE.MathUtils.clamp((wave+.15)*1.45,.25,1.45):THREE.MathUtils.clamp(.78+wave*.2,.45,1.25));
+        dummy.position.set(0,set.baseY+i*set.step,.26);dummy.scale.setScalar(.78+glow*.22);dummy.updateMatrix();set.bulbInstances.setMatrixAt(i,dummy.matrix);
+        set.bulbInstances.setColorAt(i,new THREE.Color().setRGB(1, .77+.15*glow, .45+.22*glow));
+        dummy.position.set(0,set.baseY+i*set.step,.25);dummy.scale.setScalar(.7+glow*.45);dummy.updateMatrix();set.haloInstances.setMatrixAt(i,dummy.matrix);
+      }
+      set.bulbInstances.instanceMatrix.needsUpdate=true;set.bulbInstances.instanceColor.needsUpdate=true;set.haloInstances.instanceMatrix.needsUpdate=true;
+    });
+  }
+  document.querySelector('#velocity').innerHTML=`${Math.abs(angularVelocity).toFixed(2)} <span style="font-size:12px;color:#b88d69">rad/s</span>`;
+  composer.render(dt);
+}
+
+function resize(){
+  const w=innerWidth,h=innerHeight;camera.aspect=w/h;camera.position.z=w/h<.48?11.8:(w/h<.72?12.8:(w/h<1?13.4:12.7));camera.position.x=w/h<.72?1.8:3.6;camera.lookAt(0,.35,0);
+  camera.fov=Math.max(34,2*Math.atan(5.35/(2*camera.position.z*camera.aspect))*180/Math.PI);camera.updateProjectionMatrix();
+  renderer.setPixelRatio(Math.min(devicePixelRatio||1,isMobile?1.35:1.8));renderer.setSize(w,h);composer.setSize(w,h);bloom.setSize(w,h);
+}
+addEventListener('resize',resize);
+resize();
+// Start nearly still, with a little studio-light movement to make the first frame feel alive.
+if(!reducedMotion){angularVelocity=.06;}
+canvas.style.cursor='grab';animate();
+</script>
+</body>
+</html>
